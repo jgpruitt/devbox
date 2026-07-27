@@ -22,6 +22,7 @@ The image is based on Ubuntu 24.04 with `systemd` and includes:
 - PostgreSQL 18 client only (`psql`, `pg_dump`, etc.)
 - `jq`, `yq`, `ripgrep`, `vim`, `curl`, `git`, `unzip`
 - Common dev tools including `gh`, `tmux`, `fzf`, `fd`, `shellcheck`, `direnv`, `build-essential`, `cmake`, `ninja-build`, Python tooling, `rsync`, `strace`, `lsof`, and network utilities
+- Ghostty terminfo entries for `TERM=xterm-ghostty`
 
 ## Build The Image
 
@@ -72,6 +73,12 @@ Run as root when needed:
 
 ```bash
 container machine run -n devbox0 --root -- apt-get update
+```
+
+Install Ghostty terminfo into an existing machine from the host Ghostty entry:
+
+```bash
+infocmp -x xterm-ghostty | container machine run -n devbox0 --root -- tic -x -
 ```
 
 Set a default machine if you do not want to pass `-n` every time:

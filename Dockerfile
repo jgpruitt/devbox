@@ -38,6 +38,7 @@ RUN apt-get update \
     manpages-dev \
     net-tools \
     netcat-openbsd \
+    ncurses-bin \
     ninja-build \
     openssh-client \
     openssh-server \
@@ -75,6 +76,10 @@ RUN apt-get update \
   && yes | unminimize \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
+
+COPY ghostty.terminfo /tmp/ghostty.terminfo
+RUN tic -x /tmp/ghostty.terminfo \
+  && rm /tmp/ghostty.terminfo
 
 # PostgreSQL client only
 RUN install -d /usr/share/postgresql-common/pgdg \
