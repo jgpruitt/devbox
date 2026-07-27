@@ -63,11 +63,16 @@ Open an interactive shell:
 container machine run -n devbox0
 ```
 
+Interactive shells are login bash sessions. They read the machine user's
+`~/.profile`, which on Ubuntu sources `~/.bashrc` by default.
+
 Run a single command:
 
 ```bash
 container machine run -n devbox0 -- uname -a
 ```
+
+Single commands run through `bash -c` and do not read interactive startup files.
 
 Run as root when needed:
 

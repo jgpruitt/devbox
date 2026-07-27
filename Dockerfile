@@ -121,6 +121,20 @@ RUN printf '%s\n' \
     'alias docker-compose=podman-compose' \
     > /etc/profile.d/podman-docker-aliases.sh
 
+# Apple `container machine run` execs the user's shell directly for interactive
+# sessions rather than invoking it as a login shell. Use a small shell wrapper so
+# interactive machine sessions read ~/.profile, while command mode still behaves
+# like normal `bash -c` and does not load interactive startup files.
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'if [ "${1:-}" = "-c" ]; then' \
+    '  exec /bin/bash "$@"' \
+    'fi' \
+    'exec /bin/bash -l "$@"' \
+    > /usr/local/bin/devbox-login-shell \
+  && chmod 0755 /usr/local/bin/devbox-login-shell \
+  && printf '%s\n' /usr/local/bin/devbox-login-shell >> /etc/shells
+
 # Expose Podman's Docker-compatible API on the conventional Docker socket path.
 # This is intentionally permissive because each container machine is isolated.
 RUN groupadd --system docker \
@@ -160,6 +174,7 @@ RUN install -d /usr/local/sbin \
     '  esac' \
     '  ensure_line /etc/subuid "$user"' \
     '  ensure_line /etc/subgid "$user"' \
+    '  usermod -s /usr/local/bin/devbox-login-shell "$user" || true' \
     '  usermod -aG docker "$user" || true' \
     '  loginctl enable-linger "$user" || true' \
     'done < /etc/passwd' \
