@@ -1,0 +1,125 @@
+FROM ubuntu:latest
+
+ENV container=container
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+
+ARG PG_MAJOR=18
+
+# Minimal container-machine userspace plus tools for developing C extensions.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    autoconf \
+    automake \
+    bash-completion \
+    bc \
+    bison \
+    build-essential \
+    ca-certificates \
+    clang \
+    clang-format \
+    curl \
+    dbus \
+    flex \
+    gdb \
+    git \
+    gnupg \
+    jq \
+    lcov \
+    less \
+    libreadline-dev \
+    libssl-dev \
+    libtool \
+    linux-perf \
+    lsof \
+    ncurses-bin \
+    openssh-server \
+    pkg-config \
+    pre-commit \
+    procps \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ripgrep \
+    sudo \
+    systemd \
+    vim \
+    wget \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+COPY ghostty.terminfo /tmp/ghostty.terminfo
+RUN tic -x /tmp/ghostty.terminfo \
+  && rm /tmp/ghostty.terminfo
+
+# Install PostgreSQL itself, PGXS, server headers, and regression-test tools.
+RUN install -d /usr/share/postgresql-common/pgdg \
+  && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+    | gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg \
+  && . /etc/os-release \
+  && echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+    > /etc/apt/sources.list.d/pgdg.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends \
+    postgresql-${PG_MAJOR} \
+    postgresql-server-dev-${PG_MAJOR} \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+ENV PATH="/usr/lib/postgresql/${PG_MAJOR}/bin:${PATH}"
+ENV PG_CONFIG="/usr/lib/postgresql/${PG_MAJOR}/bin/pg_config"
+
+# Apple `container machine run` execs the user's shell directly for interactive
+# sessions. Use a login shell there, but preserve normal behavior for commands.
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'if [ "${1:-}" = "-c" ]; then' \
+    '  exec /bin/bash "$@"' \
+    'fi' \
+    'exec /bin/bash -l "$@"' \
+    > /usr/local/bin/devbox-login-shell \
+  && chmod 0755 /usr/local/bin/devbox-login-shell \
+  && printf '%s\n' /usr/local/bin/devbox-login-shell >> /etc/shells
+
+# Apple creates the real user on first boot; make its interactive shell load
+# the mounted home directory's normal profile and bash configuration.
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'set -eu' \
+    'while IFS=: read -r user _ _ _ _ home shell; do' \
+    '  case "$user:$home:$shell" in' \
+    '    root:*|nobody:*|*:/nonexistent:*|*:/usr/sbin/nologin|*:/bin/false) continue ;;' \
+    '  esac' \
+    '  case "$home" in' \
+    '    /home/*|/Users/*) usermod -s /usr/local/bin/devbox-login-shell "$user" || true ;;' \
+    '  esac' \
+    'done < /etc/passwd' \
+    > /usr/local/sbin/setup-devbox-users \
+  && chmod 0755 /usr/local/sbin/setup-devbox-users \
+  && printf '%s\n' \
+    '[Unit]' \
+    'Description=Configure Apple container machine users' \
+    'After=systemd-user-sessions.service' \
+    '' \
+    '[Service]' \
+    'Type=oneshot' \
+    'ExecStart=/usr/local/sbin/setup-devbox-users' \
+    '' \
+    '[Install]' \
+    'WantedBy=multi-user.target' \
+    > /etc/systemd/system/setup-devbox-users.service
+
+RUN >/etc/machine-id \
+  && >/var/lib/dbus/machine-id \
+  && ln -sf ../lib/systemd/systemd /sbin/init \
+  && systemctl set-default multi-user.target \
+  && systemctl enable ssh setup-devbox-users.service \
+  && systemctl mask \
+    dev-hugepages.mount \
+    sys-fs-fuse-connections.mount \
+    systemd-update-utmp.service \
+    systemd-tmpfiles-setup.service \
+    console-getty.service \
+  && (systemctl disable networkd-dispatcher.service 2>/dev/null || true)
+
+RUN sed -i -e 's/^AcceptEnv LANG LC_\*$/#AcceptEnv LANG LC_*/' /etc/ssh/sshd_config
